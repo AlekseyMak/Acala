@@ -119,7 +119,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 	spec_name: create_runtime_str!("karura"),
 	impl_name: create_runtime_str!("karura"),
 	authoring_version: 1,
-	spec_version: 1000,
+	spec_version: 1001,
 	impl_version: 0,
 	apis: RUNTIME_API_VERSIONS,
 	transaction_version: 1,
@@ -247,7 +247,7 @@ impl pallet_authorship::Config for Runtime {
 
 parameter_types! {
 	pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(33);
-	pub const Period: u32 = 6 * HOURS;
+	pub const Period: u32 = 2 * HOURS;
 	pub const Offset: BlockNumber = 0;
 }
 
@@ -269,7 +269,7 @@ impl pallet_session::Config for Runtime {
 parameter_types! {
 	pub const PotId: PalletId = PalletId(*b"PotStake");
 	pub const MaxCandidates: u32 = 200;
-	pub const MaxInvulnerables: u32 = 50;
+	pub const MaxInvulnerables: u32 = 5;
 }
 
 impl module_collator_selection::Config for Runtime {
