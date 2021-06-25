@@ -30,12 +30,12 @@ use codec::Encode;
 use frame_support::{
 	ensure,
 	pallet_prelude::*,
-	traits::{Currency, IsType, OnKilledAccount, ReservableCurrency},
+	traits::{Currency, IsType, OnKilledAccount},
 	transactional,
 };
 use frame_system::{ensure_signed, pallet_prelude::*};
 use module_support::AddressMapping;
-use orml_traits::{currency::TransferAll, Handler};
+use orml_traits::currency::TransferAll;
 use primitives::{evm::EvmAddress, AccountIndex};
 use sp_core::{crypto::AccountId32, ecdsa};
 use sp_io::{
@@ -66,16 +66,13 @@ pub mod module {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
 		/// The Currency for managing Evm account assets.
-		type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
+		type Currency: Currency<Self::AccountId>;
 
 		/// Mapping from address to account id.
 		type AddressMapping: AddressMapping<Self::AccountId>;
 
 		/// Merge free balance from source to dest.
 		type TransferAll: TransferAll<Self::AccountId>;
-
-		/// On claim account hook.
-		type OnClaim: Handler<Self::AccountId>;
 
 		/// Weight information for the extrinsics in this module.
 		type WeightInfo: WeightInfo;
@@ -162,8 +159,6 @@ pub mod module {
 			Accounts::<T>::insert(eth_address, &who);
 			EvmAddresses::<T>::insert(&who, eth_address);
 
-			T::OnClaim::handle(&who)?;
-
 			Self::deposit_event(Event::ClaimAccount(who, eth_address));
 
 			Ok(().into())
@@ -180,8 +175,6 @@ pub mod module {
 			ensure!(!EvmAddresses::<T>::contains_key(&who), Error::<T>::AccountIdHasMapped);
 
 			let eth_address = T::AddressMapping::get_or_create_evm_address(&who);
-
-			T::OnClaim::handle(&who)?;
 
 			Self::deposit_event(Event::ClaimAccount(who, eth_address));
 

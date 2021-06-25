@@ -93,7 +93,7 @@ const generateRelaychainGenesisFile = (config, relaychainGenesisFilePath, output
 
   const runtime = spec.genesis.runtime.runtime_genesis_config || spec.genesis.runtime;
 
-  const sessionKeys = runtime.palletSession.keys;
+  const sessionKeys = runtime.session.keys;
   sessionKeys.length = 0;
 
   // add authorities from config
@@ -143,7 +143,7 @@ const generateRelaychainGenesisFile = (config, relaychainGenesisFilePath, output
         parachain: parachain.parachain,
       },
     ];
-    runtime.parachainsParas.paras.push(para);
+    runtime.paras.paras.push(para);
   }
 
   let tmpfile = `${shell.tempdir()}/${config.relaychain.chain}.json`
@@ -200,32 +200,34 @@ const generateParachainGenesisFile = (id, image, chain, output, yes) => {
 
   const spec = getChainspec(image, chain.base);
 
+  spec.bootNodes = [];
+
   const runtime = spec.genesis.runtime;
 
   runtime.parachainInfo.parachainId = id;
 
   const endowed = []
 
-  if (chain.sudo && runtime.palletSudo) {
-    runtime.palletSudo.key = getAddress(chain.sudo)
-    endowed.push(runtime.palletSudo.key)
+  if (chain.sudo && runtime.sudo) {
+    runtime.sudo.key = getAddress(chain.sudo)
+    endowed.push(runtime.sudo.key)
   }
 
   if (chain.collators) {
-    runtime.moduleCollatorSelection.invulnerables = chain.collators.map(getAddress)
-    runtime.palletSession.keys = chain.collators.map(x => {
+    runtime.collatorSelection.invulnerables = chain.collators.map(getAddress)
+    runtime.session.keys = chain.collators.map(x => {
       const addr = getAddress(x);
       return [
         addr, addr, { aura: addr }
       ]
     })
 
-    endowed.push(...runtime.moduleCollatorSelection.invulnerables)
+    endowed.push(...runtime.collatorSelection.invulnerables)
   }
 
   if (endowed.length) {
     const decimals = _.get(spec, 'properties.tokenDecimals[0]') || _.get(spec, 'properties.tokenDecimals') || 15
-    const balances = runtime.palletBalances.balances
+    const balances = runtime.balances.balances
     const balObj = {}
     for (const [addr, val] of balances) {
       balObj[addr] = val
@@ -233,10 +235,34 @@ const generateParachainGenesisFile = (id, image, chain, output, yes) => {
     for (const addr of endowed) {
       balObj[addr] = (balObj[addr] || 0) + Math.pow(10, decimals)
     }
-    runtime.palletBalances.balances = Object.entries(balObj).map(x => x)
+    runtime.balances.balances = Object.entries(balObj).map(x => x)
   }
 
   fs.writeFileSync(filepath, JSON.stringify(spec, null, 2));
+}
+
+const generateDockerfiles = (config, output, yes) => {
+  const relaychainDockerfilePath = path.join(output, 'relaychain.Dockerfile');
+  checkOverrideFile(relaychainDockerfilePath, yes);
+
+  const relaychainDockerfile = [
+    `FROM ${config.relaychain.image}`,
+    'COPY . /app'
+  ];
+
+  fs.writeFileSync(relaychainDockerfilePath, relaychainDockerfile.join('\n'));
+
+  for (const para of config.paras) {
+    const parachainDockerfilePath = path.join(output, `parachain-${para.id}.Dockerfile`);
+    checkOverrideFile(parachainDockerfilePath, yes);
+
+    const parachainDockerfile = [
+      `FROM ${para.image}`,
+      'COPY . /app'
+    ];
+
+    fs.writeFileSync(parachainDockerfilePath, parachainDockerfile.join('\n'));
+  }
 }
 
 const generate = async (config, { output, yes }) => {
@@ -260,6 +286,8 @@ const generate = async (config, { output, yes }) => {
 
   generateRelaychainGenesisFile(config, relaychainGenesisFilePath, output);
 
+  generateDockerfiles(config, output, yes);
+
   const dockerCompose = {
     version: '3.7',
     services: {},
@@ -282,8 +310,11 @@ const generate = async (config, { output, yes }) => {
         `${node.rpcPort || 9933 + idx}:9933`,
         `${node.port || 30333 + idx}:30333`,
       ],
-      volumes: [`${name}:/data`, '.:/app'],
-      image: config.relaychain.image,
+      volumes: [`${name}:/data`],
+      build: {
+        context: '.',
+        dockerfile: 'relaychain.Dockerfile'
+      },
       command: [
         '--base-path=/data',
         `--chain=/app/${config.relaychain.chain}.json`,
@@ -319,8 +350,11 @@ const generate = async (config, { output, yes }) => {
           `${paraNode.rpcPort || 9933 + idx}:9933`,
           `${paraNode.port || 30333 + idx}:30333`,
         ],
-        volumes: [`${name}:/acala/data`, '.:/app'],
-        image: para.image,
+        volumes: [`${name}:/acala/data`],
+        build: {
+          context: '.',
+          dockerfile: `parachain-${para.id}.Dockerfile`
+        },
         command: [
           '--base-path=/acala/data',
           `--chain=/app/${para.chain.base || para.chain}-${para.id}.json`,

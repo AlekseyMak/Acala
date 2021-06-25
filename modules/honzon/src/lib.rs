@@ -29,9 +29,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::unused_unit)]
 
-use frame_support::{pallet_prelude::*, traits::ReservableCurrency, transactional};
+use frame_support::{pallet_prelude::*, traits::NamedReservableCurrency, transactional};
 use frame_system::pallet_prelude::*;
-use primitives::{Amount, Balance, CurrencyId};
+use primitives::{Amount, Balance, CurrencyId, ReserveIdentifier};
 use sp_runtime::{
 	traits::{StaticLookup, Zero},
 	DispatchResult,
@@ -50,14 +50,21 @@ pub use weights::WeightInfo;
 pub mod module {
 	use super::*;
 
+	pub const RESERVE_ID: ReserveIdentifier = ReserveIdentifier::Honzon;
+
 	#[pallet::config]
 	pub trait Config: frame_system::Config + cdp_engine::Config {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
 		/// Currency for authorization reserved.
-		type Currency: ReservableCurrency<Self::AccountId, Balance = Balance>;
+		type Currency: NamedReservableCurrency<
+			Self::AccountId,
+			Balance = Balance,
+			ReserveIdentifier = ReserveIdentifier,
+		>;
 
 		/// Reserved amount per authorization.
+		#[pallet::constant]
 		type DepositPerAuthorization: Get<Balance>;
 
 		/// Weight information for the extrinsics in this module.
@@ -66,10 +73,14 @@ pub mod module {
 
 	#[pallet::error]
 	pub enum Error<T> {
-		// No authorization
-		NoAuthorization,
+		// No permisson
+		NoPermission,
 		// The system has been shutdown
 		AlreadyShutdown,
+		// Authorization not exists
+		AuthorizationNotExists,
+		// Have authorized already
+		AlreadyAuthorized,
 	}
 
 	#[pallet::event]
@@ -136,7 +147,9 @@ pub mod module {
 			Ok(().into())
 		}
 
-		#[pallet::weight(<T as Config>::WeightInfo::close_loan_has_debit_by_dex())]
+		#[pallet::weight(<T as Config>::WeightInfo::close_loan_has_debit_by_dex(
+			maybe_path.clone().map(|p| p.len() as u32).unwrap_or(2)
+		))]
 		#[transactional]
 		pub fn close_loan_has_debit_by_dex(
 			origin: OriginFor<T>,
@@ -183,14 +196,20 @@ pub mod module {
 		) -> DispatchResultWithPostInfo {
 			let from = ensure_signed(origin)?;
 			let to = T::Lookup::lookup(to)?;
+			if from == to {
+				return Ok(().into());
+			}
+
 			Authorization::<T>::try_mutate_exists(&from, (currency_id, &to), |maybe_reserved| -> DispatchResult {
 				if maybe_reserved.is_none() {
 					let reserve_amount = T::DepositPerAuthorization::get();
-					<T as Config>::Currency::reserve(&from, reserve_amount)?;
+					<T as Config>::Currency::reserve_named(&RESERVE_ID, &from, reserve_amount)?;
 					*maybe_reserved = Some(reserve_amount);
 					Self::deposit_event(Event::Authorization(from.clone(), to.clone(), currency_id));
+					Ok(())
+				} else {
+					Err(Error::<T>::AlreadyAuthorized.into())
 				}
-				Ok(())
 			})?;
 			Ok(().into())
 		}
@@ -208,10 +227,10 @@ pub mod module {
 		) -> DispatchResultWithPostInfo {
 			let from = ensure_signed(origin)?;
 			let to = T::Lookup::lookup(to)?;
-			if let Some(reserved) = Authorization::<T>::take(&from, (currency_id, &to)) {
-				<T as Config>::Currency::unreserve(&from, reserved);
-				Self::deposit_event(Event::UnAuthorization(from, to, currency_id));
-			}
+			let reserved =
+				Authorization::<T>::take(&from, (currency_id, &to)).ok_or(Error::<T>::AuthorizationNotExists)?;
+			<T as Config>::Currency::unreserve_named(&RESERVE_ID, &from, reserved);
+			Self::deposit_event(Event::UnAuthorization(from, to, currency_id));
 			Ok(().into())
 		}
 
@@ -220,11 +239,8 @@ pub mod module {
 		#[transactional]
 		pub fn unauthorize_all(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
 			let from = ensure_signed(origin)?;
-			let total_reserved: Balance = Authorization::<T>::drain_prefix(&from)
-				.fold(Zero::zero(), |total_reserved, (_, reserved)| {
-					total_reserved.saturating_add(reserved)
-				});
-			<T as Config>::Currency::unreserve(&from, total_reserved);
+			Authorization::<T>::remove_prefix(&from);
+			<T as Config>::Currency::unreserve_all_named(&RESERVE_ID, &from);
 			Self::deposit_event(Event::UnAuthorizationAll(from));
 			Ok(().into())
 		}
@@ -236,7 +252,7 @@ impl<T: Config> Pallet<T> {
 	fn check_authorization(from: &T::AccountId, to: &T::AccountId, currency_id: CurrencyId) -> DispatchResult {
 		ensure!(
 			from == to || Authorization::<T>::contains_key(from, (currency_id, to)),
-			Error::<T>::NoAuthorization
+			Error::<T>::NoPermission
 		);
 		Ok(())
 	}

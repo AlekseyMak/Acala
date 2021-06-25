@@ -32,8 +32,8 @@ use karura_runtime::{
 	dollar, get_all_module_accounts, Balance, BalancesConfig, BlockNumber, CdpEngineConfig, CdpTreasuryConfig,
 	CollatorSelectionConfig, DexConfig, FinancialCouncilMembershipConfig, GeneralCouncilMembershipConfig,
 	HomaCouncilMembershipConfig, NativeTokenExistentialDeposit, OperatorMembershipAcalaConfig, OrmlNFTConfig,
-	ParachainInfoConfig, SessionConfig, SessionKeys, SudoConfig, SystemConfig, TechnicalCommitteeMembershipConfig,
-	TokensConfig, VestingConfig, KAR, KSM, KUSD, LKSM,
+	ParachainInfoConfig, SS58Prefix, SessionConfig, SessionKeys, SudoConfig, SystemConfig,
+	TechnicalCommitteeMembershipConfig, TokensConfig, VestingConfig, KAR, KSM, KUSD, LKSM,
 };
 use runtime_common::TokenInfo;
 
@@ -55,6 +55,7 @@ fn karura_properties() -> Properties {
 	});
 	properties.insert("tokenSymbol".into(), token_symbol.into());
 	properties.insert("tokenDecimals".into(), token_decimals.into());
+	properties.insert("ss58Format".into(), SS58Prefix::get().into());
 
 	properties
 }
@@ -101,7 +102,7 @@ pub fn latest_karura_config() -> Result<ChainSpec, String> {
 				// qPnkT89PRdiCbBgvE6a6gLcFCqWC8F1UoCZUhFvjbBkXMXc
 				hex!["5cac9c2837017a40f90cc15b292acdf1ee28ae03005dff8d13d32fdf7d2e237c"].into(),
 				// sZCH1stvMnSuDK1EDpdNepMYcpZWoDt3yF3PnUENS21f2tA
-				hex!["1ab677fa2007fb1e8ac2f5f6d253d5a2bd9c2ed4e5d3c1565c5d84436f81325d"].into(),
+				hex!["bc517c01c4b663efdfea3dd9ab71bdc3ea607e8a35ba3d1872e5b0942821cd2f"].into(),
 				// ra6MmAYU2qdCVsMS3REKZ82CJ1EwMWq6H6Zo475xTzedctJ
 				hex!["90c492f38270b5512370886c392ff6ec7624b14185b4b610b30248a28c94c953"].into(),
 				// ts9q95ZJmaCMCPKuKTY4g5ZeK65GdFVz6ZDD8LEnYJ3jpbm
@@ -199,11 +200,7 @@ pub fn karura_dev_config() -> Result<ChainSpec, String> {
 			karura_genesis(
 				wasm_binary,
 				// Initial PoA authorities
-				vec![
-					get_karura_authority_keys_from_seed("Alice"),
-					get_karura_authority_keys_from_seed("Bob"),
-					get_karura_authority_keys_from_seed("Charlie"),
-				],
+				vec![get_karura_authority_keys_from_seed("Alice")],
 				// Sudo account
 				get_account_id_from_seed::<sr25519::Public>("Alice"),
 				vec![
@@ -238,53 +235,52 @@ fn karura_genesis(
 	general_councils: Vec<AccountId>,
 ) -> karura_runtime::GenesisConfig {
 	karura_runtime::GenesisConfig {
-		frame_system: SystemConfig {
+		system: SystemConfig {
 			// Add Wasm runtime to storage.
 			code: wasm_binary.to_vec(),
 			changes_trie_config: Default::default(),
 		},
-		pallet_balances: BalancesConfig {
+		balances: BalancesConfig {
 			balances: initial_allocation,
 		},
-		pallet_sudo: SudoConfig { key: root_key },
-		pallet_collective_Instance1: Default::default(),
-		pallet_membership_Instance1: GeneralCouncilMembershipConfig {
+		sudo: SudoConfig { key: root_key },
+		general_council: Default::default(),
+		general_council_membership: GeneralCouncilMembershipConfig {
 			members: general_councils,
 			phantom: Default::default(),
 		},
-		pallet_collective_Instance2: Default::default(),
-		pallet_membership_Instance2: FinancialCouncilMembershipConfig {
+		financial_council: Default::default(),
+		financial_council_membership: FinancialCouncilMembershipConfig {
 			members: vec![],
 			phantom: Default::default(),
 		},
-		pallet_collective_Instance3: Default::default(),
-		pallet_membership_Instance3: HomaCouncilMembershipConfig {
+		homa_council: Default::default(),
+		homa_council_membership: HomaCouncilMembershipConfig {
 			members: vec![],
 			phantom: Default::default(),
 		},
-		pallet_collective_Instance4: Default::default(),
-		pallet_membership_Instance4: TechnicalCommitteeMembershipConfig {
+		technical_committee: Default::default(),
+		technical_committee_membership: TechnicalCommitteeMembershipConfig {
 			members: vec![],
 			phantom: Default::default(),
 		},
-		pallet_membership_Instance5: OperatorMembershipAcalaConfig {
+		operator_membership_acala: OperatorMembershipAcalaConfig {
 			members: vec![],
 			phantom: Default::default(),
 		},
-		pallet_treasury: Default::default(),
-		orml_tokens: TokensConfig {
-			endowed_accounts: vec![],
-		},
-		orml_vesting: VestingConfig { vesting: vesting_list },
-		module_cdp_treasury: CdpTreasuryConfig {
+		democracy: Default::default(),
+		treasury: Default::default(),
+		tokens: TokensConfig { balances: vec![] },
+		vesting: VestingConfig { vesting: vesting_list },
+		cdp_treasury: CdpTreasuryConfig {
 			expected_collateral_auction_size: vec![],
 		},
-		module_cdp_engine: CdpEngineConfig {
+		cdp_engine: CdpEngineConfig {
 			collaterals_params: vec![],
 			global_interest_rate_per_sec: Default::default(),
 		},
-		module_evm: Default::default(),
-		module_dex: DexConfig {
+		evm: Default::default(),
+		dex: DexConfig {
 			initial_listing_trading_pairs: vec![],
 			initial_enabled_trading_pairs: vec![],
 			initial_added_liquidity_pools: vec![],
@@ -293,12 +289,12 @@ fn karura_genesis(
 			parachain_id: PARA_ID.into(),
 		},
 		orml_nft: OrmlNFTConfig { tokens: vec![] },
-		module_collator_selection: CollatorSelectionConfig {
+		collator_selection: CollatorSelectionConfig {
 			invulnerables: initial_authorities.iter().cloned().map(|(acc, _)| acc).collect(),
 			candidacy_bond: Zero::zero(),
 			..Default::default()
 		},
-		pallet_session: SessionConfig {
+		session: SessionConfig {
 			keys: initial_authorities
 				.iter()
 				.cloned()
@@ -313,7 +309,8 @@ fn karura_genesis(
 		},
 		// no need to pass anything to aura, in fact it will panic if we do. Session will take care
 		// of this.
-		pallet_aura: Default::default(),
-		cumulus_pallet_aura_ext: Default::default(),
+		aura: Default::default(),
+		aura_ext: Default::default(),
+		parachain_system: Default::default(),
 	}
 }

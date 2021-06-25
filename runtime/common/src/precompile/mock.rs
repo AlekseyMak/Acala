@@ -33,7 +33,8 @@ use module_support::{
 };
 use orml_traits::{parameter_type_with_key, MultiReservableCurrency};
 pub use primitives::{
-	evm::EvmAddress, Amount, BlockNumber, CurrencyId, DexShare, Header, Nonce, TokenSymbol, TradingPair,
+	evm::EvmAddress, Amount, BlockNumber, CurrencyId, DexShare, Header, Nonce, ReserveIdentifier, TokenSymbol,
+	TradingPair,
 };
 use sha3::{Digest, Keccak256};
 use sp_core::{crypto::AccountId32, H160, H256};
@@ -134,6 +135,7 @@ impl orml_tokens::Config for Test {
 
 parameter_types! {
 	pub const ExistentialDeposit: Balance = 1;
+	pub const MaxReserves: u32 = 50;
 }
 
 impl pallet_balances::Config for Test {
@@ -142,8 +144,10 @@ impl pallet_balances::Config for Test {
 	type Event = Event;
 	type ExistentialDeposit = ExistentialDeposit;
 	type AccountStore = System;
-	type WeightInfo = ();
 	type MaxLocks = ();
+	type MaxReserves = MaxReserves;
+	type ReserveIdentifier = ReserveIdentifier;
+	type WeightInfo = ();
 }
 
 pub const ACA: CurrencyId = CurrencyId::Token(TokenSymbol::ACA);
@@ -180,12 +184,15 @@ impl module_evm_manager::Config for Test {
 parameter_types! {
 	pub const CreateClassDeposit: Balance = 200;
 	pub const CreateTokenDeposit: Balance = 100;
+	pub const DataDepositPerByte: Balance = 10;
 	pub const NftPalletId: PalletId = PalletId(*b"aca/aNFT");
 }
 impl module_nft::Config for Test {
 	type Event = Event;
+	type Currency = Balances;
 	type CreateClassDeposit = CreateClassDeposit;
 	type CreateTokenDeposit = CreateTokenDeposit;
+	type DataDepositPerByte = DataDepositPerByte;
 	type PalletId = NftPalletId;
 	type WeightInfo = ();
 }
