@@ -68,7 +68,7 @@ polkadot-parachain = { git = "https://github.com/paritytech/polkadot", branch = 
 xcm = { git = "https://github.com/paritytech/polkadot", branch = "rococo-v1", default-features = false }
 xcm-executor = { git = "https://github.com/paritytech/polkadot", branch = "rococo-v1", default-features = false }
 xcm-builder = { git = "https://github.com/paritytech/polkadot", branch = "rococo-v1", default-features = false }
-xcmp-queue = { git = "https://github.com/paritytech/cumulus", branch = "rococo-v1", default-features = false }
+cumulus-pallet-xcmp-queue = { git = "https://github.com/paritytech/cumulus", branch = "rococo-v1", default-features = false }
 
 orml-auction = { path = "../../orml/auction", default-features = false }
 orml-authority = { path = "../../orml/authority", default-features = false }
